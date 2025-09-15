@@ -1,7 +1,6 @@
-# speed-stop-code
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import rospy # ros 노드 생성, 토픽, 서비스 호출 가능케 함.
+import rospy # ros 노드 생성
 from moari_msgs.msg import CtrlCmd, CollisionData, EgoVehicleStatus, EventInfo 
 # 차량 제어 명령, 충돌 정보, 차량 상태 정보, 이벤트 관련 데이터
 from moari_msgs.srv import MoraiEventCmdSrv
@@ -30,10 +29,11 @@ class s_drive():
         rospy.wait_for_service('/Service_MoraiEventCmd')
         self.event_cmd_srv = rospy.ServiceProxy('/Service_MoraiEventCmd', MoraiEventCmdSrv)
 
-        
+        # 루프와 충돌 회피 로직
         self.rate = rospy.Rate(10)
 
-        self.is_collision = False
+        # 충돌 없음. ego 차량 상태 초기화
+        self.is_collision = False 
         self.ego_status = EgoVehicleStatus()
 
         # 처음에 auto_mode , drive gear로 세팅
@@ -45,24 +45,24 @@ class s_drive():
                 self.send_gear_cmd(Gear.R.value)
 
                 for _ in range(20):
-                    self.send_ctrl_cmd(0.0, 10)   # (steering, velocity)
+                    self.send_ctrl_cmd(0.0, 10)  
                     self.rate.sleep()
 
                 self.send_gear_cmd(Gear.D.value)
 
-            else:
+            else: # 충돌 없으면 계속 전진
                 self.send_ctrl_cmd(0.0, 10)
                 self.rate.sleep()
 
     # 충돌 메시지 콜백 함수
     def collision_callback(self, data):
         if len(data.collision_object) > 0:
-            self.is_collision = True
+            self.is_collision = True #충돌 시
             rospy.loginfo("Collision detected!")
         else:
             self.is_collision = False
 
-    # Ego 차량 상태 정보 콜백 함수
+    # Ego 차량 상태 정보 콜백 함수, 차량 속도 등 상태 정보 업데이트
     def ego_callback(self, data):
         self.ego_status = data
         rospy.loginfo(f"Velocity: {self.ego_status.velocity.x * 3.6:.2f} km/h")
@@ -74,7 +74,7 @@ class s_drive():
             self.send_ctrl_cmd(0, 0)
             self.rate.sleep()
 
-        gear_cmd = EventInfo()
+        gear_cmd = EventInfo() # eventInfo 메시지 생성 --> 서비스 호출 --> 기어 변경
         gear_cmd.option = 3
         gear_cmd.ctrl_mode = 3
         gear_cmd.gear = gear_mode
@@ -84,17 +84,17 @@ class s_drive():
     # ctrl_cmd 메시지 세팅 함수
     def send_ctrl_cmd(self, steering, velocity):
         cmd = CtrlCmd()
-        if velocity > 0:
+        if velocity > 0: # 전진/조향
             cmd.longlCmdType = 2
             cmd.velocity = velocity
             cmd.steering = steering
-        else:
+        else: # 속도 == 0 --> 브레이크 적용
             cmd.longlCmdType = 1
             cmd.brake = 1
             cmd.steering = 0
         self.cmd_pub.publish(cmd)
 
-
+        # 메인 실행, 노드 실행 --> 클래스 생성하면 __init__ 루프 시작
 if __name__ == '__main__':
     try:
         s_d = s_drive()
